@@ -387,6 +387,27 @@ class ThemeColors:
 # Global theme colors instance
 theme = ThemeColors()
 
+
+def close_printer_session(printer):
+    """Release the USB session of *printer*, if it has one.
+
+    Over libusb (macOS, Linux) a claimed USB interface is exclusive: a printer
+    object left open makes the next one fail to open the device, and the user
+    sees "Printer is unreachable or offline" (Epson L375 on macOS: "Printer
+    status" worked, then every "Get" failed until the app was closed). Windows
+    USBPRINT handles are shared, which is why this never showed there. It is
+    a no-op for None and for SNMP printers, which have no close() method.
+
+    Example:
+        close_printer_session(self.printer)
+    """
+    if printer is None or not hasattr(printer, "close"):
+        return
+    try:
+        printer.close()
+    except Exception as e:
+        logging.info("Cannot close the printer session: %s", e)
+
 #: Font families that carry the symbols used on the two small buttons: the
 #: model search lens (U+1F50D) and the USB port refresh arrow (U+27F3). Tk
 #: draws a character only if an installed font has it, and the Tk builds
@@ -1748,13 +1769,7 @@ Web site: https://github.com/Ircama/epson_print_conf
         open a fresh one. It is a no-op in TCP/IP mode, where the printer
         object has no session to close.
         """
-        printer = self.printer
-        if printer is None or not hasattr(printer, "close"):
-            return
-        try:
-            printer.close()
-        except Exception as e:
-            logging.info("Cannot close the printer session: %s", e)
+        close_printer_session(self.printer)
 
     def report_usb_transport_warning(self):
         """Tell the user when USB cannot open a printer here.
@@ -2098,6 +2113,9 @@ Web site: https://github.com/Ircama/epson_print_conf
                 " TCP/IP (SNMP) to open it in the browser."
             )
             self.set_feature_state(self.detect_access_key_button, True)
+            # The printer object is rebuilt below: release the USB interface
+            # the old one holds, or the new one cannot open the device.
+            close_printer_session(self.printer)
             self.printer = None
         else:
             self.reset_button.state(["disabled"])
@@ -3054,6 +3072,9 @@ Web site: https://github.com/Ircama/epson_print_conf
         except Exception as e:
             self.handle_printer_error(e)
         finally:
+            # This printer object is local to the status request: release its
+            # USB session, or self.printer cannot open the device afterwards.
+            close_printer_session(printer)
             self.config(cursor="")
             self.update_idletasks()
 
