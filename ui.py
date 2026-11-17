@@ -14,6 +14,7 @@ import threading
 import ipaddress
 import inspect
 from datetime import datetime
+from typing import Optional
 import traceback
 import logging
 import pickle
@@ -388,7 +389,7 @@ class ThemeColors:
 theme = ThemeColors()
 
 
-def close_printer_session(printer):
+def close_printer_session(printer: Optional[object]) -> None:
     """Release the USB session of *printer*, if it has one.
 
     Over libusb (macOS, Linux) a claimed USB interface is exclusive: a printer
@@ -2097,6 +2098,10 @@ Web site: https://github.com/Ircama/epson_print_conf
         # transport is really in use.
         printer_class = self.printer_class()
         usb = self.usb_mode()
+        # The printer object is rebuilt below for the new model, port or
+        # transport: release the USB interface the old one holds, or the new
+        # one cannot open the device (and nothing would close it later).
+        close_printer_session(self.printer)
         # Over USB there is no address to type: the IP field is replaced by the
         # list of USB ports found on this machine (the field itself is kept,
         # so switching back to TCP/IP does not lose what was typed).
@@ -2113,9 +2118,6 @@ Web site: https://github.com/Ircama/epson_print_conf
                 " TCP/IP (SNMP) to open it in the browser."
             )
             self.set_feature_state(self.detect_access_key_button, True)
-            # The printer object is rebuilt below: release the USB interface
-            # the old one holds, or the new one cannot open the device.
-            close_printer_session(self.printer)
             self.printer = None
         else:
             self.reset_button.state(["disabled"])
@@ -3043,6 +3045,9 @@ Web site: https://github.com/Ircama/epson_print_conf
             self.config(cursor="")
             self.update_idletasks()
             return
+        # A previous command ("Get", "Read EEPROM"...) leaves self.printer
+        # holding the USB interface; it reopens lazily on its next command.
+        close_printer_session(self.printer)
         printer = self.printer_class()(
             conf_dict=self.conf_dict,
             replace_conf=self.replace_conf,

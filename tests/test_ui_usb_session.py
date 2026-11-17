@@ -5,9 +5,10 @@ object left open makes the next one fail, and the GUI reports "Printer is
 unreachable or offline". Seen on an Epson L375 (ET-2500) on macOS: "Printer
 status" worked, then every "Get" failed until the app was closed.
 """
-from typing import Dict, List
+from typing import Dict, Iterator, List
 
 import black
+import pytest
 
 import ui
 
@@ -16,6 +17,7 @@ class FakeUsbPrinter:
     """Stands in for the epson_usb_bridge printer: records close() calls."""
 
     instances: List["FakeUsbPrinter"] = []
+    stats_error: Exception = None
 
     def __init__(self, **kwargs: object) -> None:
         self.model = kwargs.get("model")
@@ -23,10 +25,21 @@ class FakeUsbPrinter:
         FakeUsbPrinter.instances.append(self)
 
     def stats(self) -> Dict[str, str]:
+        if FakeUsbPrinter.stats_error is not None:
+            raise FakeUsbPrinter.stats_error
         return {"ready": "yes"}
 
     def close(self) -> None:
         self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def fresh_fake_printers() -> Iterator[None]:
+    FakeUsbPrinter.instances = []
+    FakeUsbPrinter.stats_error = None
+    yield
+    FakeUsbPrinter.instances = []
+    FakeUsbPrinter.stats_error = None
 
 
 class FailingCloseUsbPrinter:
@@ -69,6 +82,7 @@ class FakeStatusWindow:
         self.mode = black.Mode(line_length=200, magic_trailing_comma=False)
         self.tree = FakeTreeview()
         self.errors: List[Exception] = []
+        self.printer: object = None
 
     def printer_class(self) -> type:
         return FakeUsbPrinter
@@ -102,7 +116,6 @@ class FakeStatusWindow:
 
 
 def test_printer_status_closes_its_usb_session() -> None:
-    FakeUsbPrinter.instances.clear()
     window = FakeStatusWindow()
 
     ui.EpsonPrinterUI.printer_status(window, cursor=False)
@@ -110,6 +123,29 @@ def test_printer_status_closes_its_usb_session() -> None:
     assert window.errors == []
     assert len(FakeUsbPrinter.instances) == 1
     assert FakeUsbPrinter.instances[0].closed
+
+
+def test_printer_status_closes_its_session_when_reading_fails() -> None:
+    FakeUsbPrinter.stats_error = TimeoutError("USB: no answer")
+    window = FakeStatusWindow()
+
+    ui.EpsonPrinterUI.printer_status(window, cursor=False)
+
+    assert len(window.errors) == 1
+    assert FakeUsbPrinter.instances[0].closed
+
+
+def test_printer_status_releases_the_main_printer_first() -> None:
+    # "Get" leaves self.printer holding the interface (it opens lazily and
+    # stays open); "Printer status" must release it before opening its own.
+    window = FakeStatusWindow()
+    main_printer = FakeUsbPrinter()
+    window.printer = main_printer
+
+    ui.EpsonPrinterUI.printer_status(window, cursor=False)
+
+    assert main_printer.closed
+    assert window.errors == []
 
 
 def test_close_printer_session_closes_the_printer() -> None:
