@@ -170,7 +170,7 @@ The app is not signed with an Apple Developer ID nor notarized, so macOS blocks 
 - open it with a double click and dismiss the warning, then go to *System Settings* > *Privacy & Security*, scroll to the message about *epson_print_conf* and press *Open Anyway*; or
 - remove the quarantine attribute in a terminal: `xattr -dr com.apple.quarantine /Applications/epson_print_conf.app`.
 
-Over USB, the app opens the printer through `libusb`, which needs the device not to be busy printing; the macOS printing system keeps working as before.
+Over USB, the app opens the printer through `libusb`, which needs the device not to be busy printing; the macOS printing system keeps working as before. USB in the pre-built app requires macOS 15 or later (the bundled `libusb` is built for it); SNMP over the network works regardless.
 
 ### Running the GUI with Python
 

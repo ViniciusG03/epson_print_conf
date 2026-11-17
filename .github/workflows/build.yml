@@ -90,7 +90,11 @@ jobs:
     # After Windows: on a tag, that job commits the VERSION bump to main and
     # creates the release this job appends to.
     needs: build-windows
-    runs-on: macos-latest  # Apple Silicon (arm64), like windows-latest above
+    # Apple Silicon (arm64). Not macos-latest: Homebrew's libusb, which is
+    # copied into the app, only loads on the macOS version it was built for
+    # or later (LC_BUILD_VERSION minos), so the runner's macOS is the oldest
+    # macOS where USB works. macos-15 keeps USB working on macOS 15+.
+    runs-on: macos-15
     steps:
       - name: Git Checkout
         uses: actions/checkout@v7
